@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
-import { 
+import {
   LogOut,
   Clock,
   ChefHat,
@@ -12,8 +12,28 @@ import {
   AlertCircle,
   Timer,
   Utensils,
-  Bell
+  Bell,
+  Loader2
 } from 'lucide-react';
+
+interface Order {
+  id: number;
+  user_id: number;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  items: Array<{
+    id: number;
+    menu_item_id: number;
+    quantity: number;
+    price: number;
+    menu_item: {
+      name: string;
+      description: string;
+    };
+  }>;
+}
 
 interface KitchenOrder {
   id: string;
@@ -89,37 +109,95 @@ const initialOrders: KitchenOrder[] = [
 ];
 
 export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
-  const [orders, setOrders] = useState<KitchenOrder[]>(initialOrders);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
 
-  const updateOrderStatus = (orderId: string, newStatus: KitchenOrder['status']) => {
-    setOrders(prev => prev.map(order => 
-      order.id === orderId 
-        ? { ...order, status: newStatus }
-        : order
-    ));
+  const fetchKitchenOrders = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
 
-    // Show notification
-    const order = orders.find(o => o.id === orderId);
-    if (order) {
+      const response = await fetch('http://localhost:4000/kitchen/orders', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch kitchen orders');
+      }
+
+      const data = await response.json();
+      setOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch kitchen orders');
+    }
+  };
+
+  useEffect(() => {
+    fetchKitchenOrders();
+    setLoading(false);
+    const interval = setInterval(() => {
+      fetchKitchenOrders();
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const updateOrderStatus = async (orderId: number, newStatus: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
+
+      const response = await fetch(`http://localhost:4000/orders/${orderId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update order status');
+      }
+
+      // Update local state
+      setOrders(prev => prev.map(order =>
+        order.id === orderId
+          ? { ...order, status: newStatus }
+          : order
+      ));
+
+      // Show notification
       let message = '';
       switch (newStatus) {
-        case 'cooking':
-          message = `Started cooking ${orderId}`;
+        case 'preparing':
+          message = `Started cooking Order #${orderId}`;
           break;
         case 'ready':
-          message = `${orderId} is ready for pickup!`;
+          message = `Order #${orderId} is ready for pickup!`;
           break;
       }
       setNotification(message);
       setTimeout(() => setNotification(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update order status');
     }
   };
 
-  const getStatusColor = (status: KitchenOrder['status']) => {
+  const getStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-blue-500';
-      case 'cooking': return 'bg-secondary';
+      case 'preparing': return 'bg-secondary';
       case 'ready': return 'bg-accent';
       default: return 'bg-gray-500';
     }
@@ -134,10 +212,10 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
     }
   };
 
-  const getStatusIcon = (status: KitchenOrder['status']) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending': return Clock;
-      case 'cooking': return ChefHat;
+      case 'preparing': return ChefHat;
       case 'ready': return CheckCircle;
       default: return Clock;
     }
@@ -153,7 +231,7 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
   };
 
   const pendingOrders = orders.filter(order => order.status === 'pending');
-  const cookingOrders = orders.filter(order => order.status === 'cooking');
+  const cookingOrders = orders.filter(order => order.status === 'preparing');
   const readyOrders = orders.filter(order => order.status === 'ready');
 
   return (
@@ -219,10 +297,9 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <AnimatePresence>
-                  {pendingOrders.map((order, index) => {
+                  {pendingOrders.map((order: Order, index: number) => {
                     const StatusIcon = getStatusIcon(order.status);
-                    const PriorityIcon = getPriorityIcon(order.priority);
-                    
+
                     return (
                       <motion.div
                         key={order.id}
@@ -230,40 +307,36 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -20, scale: 0.95 }}
                         transition={{ duration: 0.3, delay: index * 0.1 }}
-                        className={`border-2 rounded-lg p-4 ${getPriorityColor(order.priority)}`}
+                        className="border-2 rounded-lg p-4 border-blue-200 bg-blue-50"
                       >
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <Badge className="bg-primary text-primary-foreground">
-                              {order.id}
+                              Order #{order.id}
                             </Badge>
-                            <PriorityIcon className="w-4 h-4" />
                           </div>
-                          <span className="text-sm text-muted-foreground">{order.orderTime}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(order.created_at).toLocaleString()}
+                          </span>
                         </div>
-                        
-                        <p className="font-medium mb-2">{order.customer}</p>
-                        
+
+                        <p className="font-medium mb-2">User ID: {order.user_id}</p>
+
                         <div className="space-y-1 mb-3">
-                          {order.items.map((item, idx) => (
+                          {order.items?.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-sm">
-                              <span>{item.quantity}x {item.name}</span>
-                              {item.specialInstructions && (
-                                <span className="text-orange-600 italic">
-                                  *{item.specialInstructions}
-                                </span>
-                              )}
+                              <span>{item.quantity}x {item.menu_item.name}</span>
                             </div>
                           ))}
                         </div>
-                        
+
                         <Separator className="my-3" />
-                        
+
                         <div className="flex items-center justify-between">
-                          <span className="text-sm">Est. {order.estimatedTime} mins</span>
+                          <span className="text-sm">₹{order.total_amount}</span>
                           <Button
                             size="sm"
-                            onClick={() => updateOrderStatus(order.id, 'cooking')}
+                            onClick={() => updateOrderStatus(order.id, 'preparing')}
                             className="bg-secondary hover:bg-secondary/90"
                           >
                             <ChefHat className="w-3 h-3 mr-1" />
@@ -296,10 +369,9 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <AnimatePresence>
-                  {cookingOrders.map((order, index) => {
+                  {cookingOrders.map((order: Order, index: number) => {
                     const StatusIcon = getStatusIcon(order.status);
-                    const PriorityIcon = getPriorityIcon(order.priority);
-                    
+
                     return (
                       <motion.div
                         key={order.id}
@@ -307,35 +379,31 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -20, scale: 0.95 }}
                         transition={{ duration: 0.3, delay: index * 0.1 }}
-                        className={`border-2 rounded-lg p-4 ${getPriorityColor(order.priority)}`}
+                        className="border-2 rounded-lg p-4 border-orange-200 bg-orange-50"
                       >
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <Badge className="bg-secondary text-secondary-foreground">
-                              {order.id}
+                              Order #{order.id}
                             </Badge>
-                            <PriorityIcon className="w-4 h-4" />
                           </div>
-                          <span className="text-sm text-muted-foreground">{order.orderTime}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(order.created_at).toLocaleString()}
+                          </span>
                         </div>
-                        
-                        <p className="font-medium mb-2">{order.customer}</p>
-                        
+
+                        <p className="font-medium mb-2">User ID: {order.user_id}</p>
+
                         <div className="space-y-1 mb-3">
-                          {order.items.map((item, idx) => (
+                          {order.items?.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-sm">
-                              <span>{item.quantity}x {item.name}</span>
-                              {item.specialInstructions && (
-                                <span className="text-orange-600 italic">
-                                  *{item.specialInstructions}
-                                </span>
-                              )}
+                              <span>{item.quantity}x {item.menu_item.name}</span>
                             </div>
                           ))}
                         </div>
-                        
+
                         <Separator className="my-3" />
-                        
+
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <motion.div
@@ -381,16 +449,16 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
               </CardHeader>
               <CardContent className="space-y-4">
                 <AnimatePresence>
-                  {readyOrders.map((order, index) => {
+                  {readyOrders.map((order: Order, index: number) => {
                     const StatusIcon = getStatusIcon(order.status);
-                    
+
                     return (
                       <motion.div
                         key={order.id}
                         initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                        animate={{ 
-                          opacity: 1, 
-                          y: 0, 
+                        animate={{
+                          opacity: 1,
+                          y: 0,
                           scale: 1,
                           boxShadow: [
                             "0 0 0 rgba(46, 139, 87, 0)",
@@ -399,8 +467,8 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
                           ]
                         }}
                         exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                        transition={{ 
-                          duration: 0.3, 
+                        transition={{
+                          duration: 0.3,
                           delay: index * 0.1,
                           boxShadow: {
                             duration: 2,
@@ -412,29 +480,31 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
                       >
                         <div className="flex items-center justify-between mb-3">
                           <Badge className="bg-accent text-accent-foreground">
-                            {order.id}
+                            Order #{order.id}
                           </Badge>
-                          <span className="text-sm text-muted-foreground">{order.orderTime}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {new Date(order.created_at).toLocaleString()}
+                          </span>
                         </div>
-                        
-                        <p className="font-medium mb-2">{order.customer}</p>
-                        
+
+                        <p className="font-medium mb-2">User ID: {order.user_id}</p>
+
                         <div className="space-y-1 mb-3">
-                          {order.items.map((item, idx) => (
+                          {order.items?.map((item, idx) => (
                             <div key={idx} className="flex justify-between text-sm">
-                              <span>{item.quantity}x {item.name}</span>
+                              <span>{item.quantity}x {item.menu_item.name}</span>
                             </div>
                           ))}
                         </div>
-                        
+
                         <Separator className="my-3" />
-                        
+
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <CheckCircle className="w-4 h-4 text-accent" />
                             <span className="text-sm font-medium text-accent">Ready!</span>
                           </div>
-                          <span className="text-sm font-medium">₹{order.total}</span>
+                          <span className="text-sm font-medium">₹{order.total_amount}</span>
                         </div>
                       </motion.div>
                     );

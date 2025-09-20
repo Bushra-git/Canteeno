@@ -1,0 +1,5 @@
+- [x] Update signup endpoint to accept roll_number and validate format (23101A0001 to 23101A0100)
+- [x] Add password minimum length validation (8 characters) in signup and login
+- [x] Update login to handle roll_number as primary identifier for students
+- [x] Update sample data in schema.sql to use new roll number format
+- [x] Test the changes by running the backend (server starts but needs DB setup)

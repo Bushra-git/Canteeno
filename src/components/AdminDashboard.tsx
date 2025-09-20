@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
-import { 
+import {
   LogOut,
   TrendingUp,
   Users,
@@ -19,15 +19,16 @@ import {
   BarChart3,
   Settings,
   ChefHat,
-  CheckCircle
+  CheckCircle,
+  Loader2
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -36,6 +37,25 @@ import {
 
 interface AdminDashboardProps {
   onLogout: () => void;
+}
+
+interface Order {
+  id: number;
+  user_id: number;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  items: Array<{
+    id: number;
+    menu_item_id: number;
+    quantity: number;
+    price: number;
+    menu_item: {
+      name: string;
+      description: string;
+    };
+  }>;
 }
 
 const salesData = [
@@ -55,12 +75,7 @@ const categoryData = [
   { name: 'Desserts', value: 10, color: '#FF6B35' }
 ];
 
-const recentOrders = [
-  { id: 'ORD001', customer: 'Rahul Sharma', items: 3, total: 125, status: 'preparing', time: '2 mins ago' },
-  { id: 'ORD002', customer: 'Priya Patel', items: 1, total: 85, status: 'ready', time: '5 mins ago' },
-  { id: 'ORD003', customer: 'Amit Kumar', items: 2, total: 45, status: 'completed', time: '8 mins ago' },
-  { id: 'ORD004', customer: 'Sneha Singh', items: 4, total: 180, status: 'ordered', time: '12 mins ago' }
-];
+// Removed static recentOrders, will use fetched orders
 
 const menuItems = [
   { id: 1, name: 'Samosa', category: 'Snacks', price: 15, stock: 25, sales: 45 },
@@ -71,6 +86,69 @@ const menuItems = [
 
 export function AdminDashboard({ onLogout }: AdminDashboardProps) {
   const [selectedTab, setSelectedTab] = useState('overview');
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [kitchenOrders, setKitchenOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchOrders = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
+
+      const response = await fetch('http://localhost:4000/orders', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch orders');
+      }
+
+      const data = await response.json();
+      setOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch orders');
+    }
+  };
+
+  const fetchKitchenOrders = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setError('No authentication token found');
+        return;
+      }
+
+      const response = await fetch('http://localhost:4000/kitchen/orders', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch kitchen orders');
+      }
+
+      const data = await response.json();
+      setKitchenOrders(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch kitchen orders');
+    }
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchOrders(), fetchKitchenOrders()]);
+      setLoading(false);
+    };
+    loadData();
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -245,34 +323,52 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 <CardTitle>Recent Orders</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recentOrders.map((order, index) => (
-                    <motion.div
-                      key={order.id}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <p className="font-medium">{order.id}</p>
-                          <p className="text-sm text-muted-foreground">{order.customer}</p>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="ml-2">Loading orders...</span>
+                  </div>
+                ) : error ? (
+                  <div className="text-center py-8 text-red-500">
+                    <p>{error}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                  {orders.slice(0, 5).map((order: Order, index: number) => (
+                      <motion.div
+                        key={order.id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <p className="font-medium">Order #{order.id}</p>
+                            <p className="text-sm text-muted-foreground">User ID: {order.user_id}</p>
+                          </div>
+                          <div>
+                            <p className="text-sm">{order.items?.length || 0} items</p>
+                            <p className="text-sm font-medium">₹{order.total_amount}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm">{order.items} items</p>
-                          <p className="text-sm font-medium">₹{order.total}</p>
+                        <div className="flex items-center gap-4">
+                          <Badge className={`${getStatusColor(order.status)} text-white`}>
+                            {order.status}
+                          </Badge>
+                          <p className="text-sm text-muted-foreground">
+                            {new Date(order.created_at).toLocaleString()}
+                          </p>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <Badge className={`${getStatusColor(order.status)} text-white`}>
-                          {order.status}
-                        </Badge>
-                        <p className="text-sm text-muted-foreground">{order.time}</p>
-                      </div>
-                    </motion.div>
+                      </motion.div>
                   ))}
-                </div>
+                    {orders.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <p>No orders found</p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -283,37 +379,55 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 <CardTitle>All Orders</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {recentOrders.map((order, index) => (
-                    <motion.div
-                      key={order.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.1 }}
-                      className="flex items-center justify-between p-4 border rounded-lg"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <p className="font-medium">{order.id}</p>
-                          <p className="text-sm text-muted-foreground">{order.customer}</p>
-                          <p className="text-xs text-muted-foreground">{order.time}</p>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="ml-2">Loading orders...</span>
+                  </div>
+                ) : error ? (
+                  <div className="text-center py-8 text-red-500">
+                    <p>{error}</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {orders.map((order: Order, index: number) => (
+                      <motion.div
+                        key={order.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <p className="font-medium">Order #{order.id}</p>
+                            <p className="text-sm text-muted-foreground">User ID: {order.user_id}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {new Date(order.created_at).toLocaleString()}
+                            </p>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="font-medium">₹{order.total}</p>
-                          <p className="text-sm text-muted-foreground">{order.items} items</p>
+                        <div className="flex items-center gap-4">
+                          <div className="text-right">
+                            <p className="font-medium">₹{order.total_amount}</p>
+                            <p className="text-sm text-muted-foreground">{order.items?.length || 0} items</p>
+                          </div>
+                          <Badge className={`${getStatusColor(order.status)} text-white`}>
+                            {order.status}
+                          </Badge>
+                          <Button size="sm" variant="outline">
+                            View Details
+                          </Button>
                         </div>
-                        <Badge className={`${getStatusColor(order.status)} text-white`}>
-                          {order.status}
-                        </Badge>
-                        <Button size="sm" variant="outline">
-                          View Details
-                        </Button>
+                      </motion.div>
+                    ))}
+                    {orders.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <p>No orders found</p>
                       </div>
-                    </motion.div>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -379,60 +493,89 @@ export function AdminDashboard({ onLogout }: AdminDashboardProps) {
                 <CardTitle>Kitchen Status Overview</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid md:grid-cols-3 gap-6">
-                  <div className="text-center p-4 bg-blue-50 rounded-lg">
-                    <div className="bg-blue-500 p-3 rounded-full w-fit mx-auto mb-2">
-                      <Clock className="w-6 h-6 text-white" />
-                    </div>
-                    <h3 className="font-semibold text-blue-700">Pending Orders</h3>
-                    <p className="text-2xl font-bold text-blue-600">8</p>
+                {loading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <span className="ml-2">Loading kitchen data...</span>
                   </div>
-                  
-                  <div className="text-center p-4 bg-orange-50 rounded-lg">
-                    <div className="bg-secondary p-3 rounded-full w-fit mx-auto mb-2">
-                      <ChefHat className="w-6 h-6 text-secondary-foreground" />
-                    </div>
-                    <h3 className="font-semibold text-orange-700">Currently Cooking</h3>
-                    <p className="text-2xl font-bold text-orange-600">5</p>
+                ) : error ? (
+                  <div className="text-center py-8 text-red-500">
+                    <p>{error}</p>
                   </div>
-                  
-                  <div className="text-center p-4 bg-green-50 rounded-lg">
-                    <div className="bg-accent p-3 rounded-full w-fit mx-auto mb-2">
-                      <CheckCircle className="w-6 h-6 text-accent-foreground" />
-                    </div>
-                    <h3 className="font-semibold text-green-700">Ready for Pickup</h3>
-                    <p className="text-2xl font-bold text-green-600">3</p>
-                  </div>
-                </div>
+                ) : (
+                  <>
+                    <div className="grid md:grid-cols-3 gap-6">
+                      <div className="text-center p-4 bg-blue-50 rounded-lg">
+                        <div className="bg-blue-500 p-3 rounded-full w-fit mx-auto mb-2">
+                          <Clock className="w-6 h-6 text-white" />
+                        </div>
+                        <h3 className="font-semibold text-blue-700">Pending Orders</h3>
+                        <p className="text-2xl font-bold text-blue-600">
+                          {kitchenOrders.filter(o => o.status === 'pending').length}
+                        </p>
+                      </div>
 
-                <div className="mt-8">
-                  <h4 className="font-semibold mb-4">Kitchen Performance Today</h4>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span>Average Preparation Time</span>
-                        <span className="font-medium">8.5 minutes</span>
+                      <div className="text-center p-4 bg-orange-50 rounded-lg">
+                        <div className="bg-secondary p-3 rounded-full w-fit mx-auto mb-2">
+                          <ChefHat className="w-6 h-6 text-secondary-foreground" />
+                        </div>
+                        <h3 className="font-semibold text-orange-700">Currently Cooking</h3>
+                        <p className="text-2xl font-bold text-orange-600">
+                          {kitchenOrders.filter(o => o.status === 'preparing').length}
+                        </p>
                       </div>
-                      <Progress value={85} className="h-2" />
-                    </div>
-                    
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span>Orders Completed On Time</span>
-                        <span className="font-medium">94%</span>
+
+                      <div className="text-center p-4 bg-green-50 rounded-lg">
+                        <div className="bg-accent p-3 rounded-full w-fit mx-auto mb-2">
+                          <CheckCircle className="w-6 h-6 text-accent-foreground" />
+                        </div>
+                        <h3 className="font-semibold text-green-700">Ready for Pickup</h3>
+                        <p className="text-2xl font-bold text-green-600">
+                          {kitchenOrders.filter(o => o.status === 'ready').length}
+                        </p>
                       </div>
-                      <Progress value={94} className="h-2" />
                     </div>
-                    
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span>Kitchen Efficiency</span>
-                        <span className="font-medium">92%</span>
+
+                    <div className="mt-8">
+                      <h4 className="font-semibold mb-4">Recent Kitchen Orders</h4>
+                      <div className="space-y-4">
+                        {kitchenOrders.slice(0, 5).map((order: Order, index: number) => (
+                          <motion.div
+                            key={order.id}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: index * 0.1 }}
+                            className="flex items-center justify-between p-4 border rounded-lg"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div>
+                                <p className="font-medium">Order #{order.id}</p>
+                                <p className="text-sm text-muted-foreground">User ID: {order.user_id}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm">{order.items?.length || 0} items</p>
+                                <p className="text-sm font-medium">₹{order.total_amount}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              <Badge className={`${getStatusColor(order.status)} text-white`}>
+                                {order.status}
+                              </Badge>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(order.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </motion.div>
+                        ))}
+                        {kitchenOrders.length === 0 && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>No active kitchen orders</p>
+                          </div>
+                        )}
                       </div>
-                      <Progress value={92} className="h-2" />
                     </div>
-                  </div>
-                </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
