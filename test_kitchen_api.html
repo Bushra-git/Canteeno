@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kitchen API Test</title>
+</head>
+<body>
+    <h2>Kitchen API Test</h2>
+    <button onclick="testKitchenLogin()">Test Kitchen Login</button>
+    <button onclick="testKitchenOrders()">Test Kitchen Orders</button>
+    <div id="results"></div>
+
+    <script>
+        let kitchenToken = null;
+
+        async function testKitchenLogin() {
+            try {
+                const response = await fetch('http://localhost:4000/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ identifier: 'kitchen', password: 'password' })
+                });
+                const data = await response.json();
+                if (data.token) {
+                    kitchenToken = data.token;
+                    document.getElementById('results').innerHTML = '<p style="color: green;">Kitchen login successful! Token received.</p>';
+                } else {
+                    document.getElementById('results').innerHTML = '<p style="color: red;">Kitchen login failed: ' + JSON.stringify(data) + '</p>';
+                }
+            } catch (error) {
+                document.getElementById('results').innerHTML = '<p style="color: red;">Error: ' + error.message + '</p>';
+            }
+        }
+
+        async function testKitchenOrders() {
+            if (!kitchenToken) {
+                document.getElementById('results').innerHTML = '<p style="color: orange;">Please login first!</p>';
+                return;
+            }
+
+            try {
+                const response = await fetch('http://localhost:4000/kitchen/orders', {
+                    headers: { 'Authorization': `Bearer ${kitchenToken}` }
+                });
+                const orders = await response.json();
+                document.getElementById('results').innerHTML = '<p style="color: green;">Kitchen orders: ' + JSON.stringify(orders, null, 2) + '</p>';
+            } catch (error) {
+                document.getElementById('results').innerHTML = '<p style="color: red;">Error fetching kitchen orders: ' + error.message + '</p>';
+            }
+        }
+    </script>
+</body>
+</html>

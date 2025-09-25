@@ -15,6 +15,7 @@ import {
   Bell,
   Loader2
 } from 'lucide-react';
+import ApiService from '../services/api';
 
 interface Order {
   id: number;
@@ -116,26 +117,50 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
 
   const fetchKitchenOrders = async () => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('No authentication token found');
-        return;
-      }
-
-      const response = await fetch('http://localhost:4000/kitchen/orders', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch kitchen orders');
-      }
-
-      const data = await response.json();
+      console.log('Fetching kitchen orders...');
+      const data = await ApiService.getKitchenOrders() as Order[];
+      console.log('Kitchen orders received:', data);
       setOrders(data);
+      setError(null);
     } catch (err) {
+      console.error('Kitchen orders fetch error:', err);
       setError(err instanceof Error ? err.message : 'Failed to fetch kitchen orders');
+      
+      // For debugging: show test data if API fails
+      const testOrders: Order[] = [
+        {
+          id: 999,
+          user_id: 3,
+          total_amount: 115.00,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          items: [
+            {
+              id: 1,
+              menu_item_id: 1,
+              quantity: 2,
+              price: 50.00,
+              menu_item: {
+                name: 'Veg Sandwich',
+                description: 'Fresh vegetable sandwich'
+              }
+            },
+            {
+              id: 2,
+              menu_item_id: 3,
+              quantity: 1,
+              price: 15.00,
+              menu_item: {
+                name: 'Masala Chai',
+                description: 'Hot spiced tea'
+              }
+            }
+          ]
+        }
+      ];
+      console.log('Using test data due to API error');
+      setOrders(testOrders);
     }
   };
 
@@ -151,24 +176,7 @@ export function KitchenDashboard({ onLogout }: KitchenDashboardProps) {
 
   const updateOrderStatus = async (orderId: number, newStatus: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        setError('No authentication token found');
-        return;
-      }
-
-      const response = await fetch(`http://localhost:4000/orders/${orderId}/status`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update order status');
-      }
+      await ApiService.updateOrderStatus(orderId, newStatus);
 
       // Update local state
       setOrders(prev => prev.map(order =>

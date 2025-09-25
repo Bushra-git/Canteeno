@@ -15,6 +15,7 @@ import {
   EyeOff
 } from 'lucide-react';
 import { toast } from 'sonner';
+import ApiService from '../services/api';
 
 interface LoginPageProps {
   onLogin: (userType: 'user' | 'admin' | 'kitchen') => void;
@@ -80,32 +81,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          identifier: form.identifier,
-          password: isRollNumber ? undefined : form.password, // Don't send password for roll numbers
-        }),
-      });
+      const data = await ApiService.login(
+        form.identifier, 
+        isRollNumber ? undefined : form.password
+      ) as any;
 
-      const data = await response.json();
+      // Store the token in localStorage
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
 
-      if (response.ok) {
-        // Store the token in localStorage
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-
-        toast.success(`Welcome back, ${data.user.username || data.user.roll_number}!`);
-        onLogin(data.user.role);
-      } else {
-        setErrors(prev => ({ ...prev, [userType]: data.error || 'Login failed. Please try again.' }));
-      }
+      toast.success(`Welcome back, ${data.user.username || data.user.roll_number}!`);
+      onLogin(data.user.role);
     } catch (error) {
       console.error('Login error:', error);
-      setErrors(prev => ({ ...prev, [userType]: 'Network error. Please try again.' }));
+      setErrors(prev => ({ 
+        ...prev, 
+        [userType]: error instanceof Error ? error.message : 'Login failed. Please try again.' 
+      }));
     }
   };
 
@@ -121,29 +113,20 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
 
     try {
-      const response = await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(signupForm),
-      });
+      const data = await ApiService.signup(signupForm) as any;
 
-      const data = await response.json();
+      // Store the token in localStorage
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
 
-      if (response.ok) {
-        // Store the token in localStorage
-        localStorage.setItem('token', data.token);
-        localStorage.setItem('user', JSON.stringify(data.user));
-
-        toast.success(`Account created successfully! Welcome, ${data.user.username}!`);
-        onLogin(data.user.role);
-      } else {
-        setErrors(prev => ({ ...prev, signup: data.error || 'Signup failed. Please try again.' }));
-      }
+      toast.success(`Account created successfully! Welcome, ${data.user.username}!`);
+      onLogin(data.user.role);
     } catch (error) {
       console.error('Signup error:', error);
-      setErrors(prev => ({ ...prev, signup: 'Network error. Please try again.' }));
+      setErrors(prev => ({ 
+        ...prev, 
+        signup: error instanceof Error ? error.message : 'Signup failed. Please try again.' 
+      }));
     }
   };
 

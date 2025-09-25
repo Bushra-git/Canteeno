@@ -3,12 +3,21 @@ import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
+import cors from 'cors';
 
 dotenv.config();
 
 const app = express();
 const port = 4000;
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// CORS configuration
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:5173', 'http://127.0.0.1:5173', 'http://127.0.0.1:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Extend Request interface to include user
 declare global {
@@ -303,10 +312,13 @@ app.post('/auth/signup', async (req, res) => {
 // Create order
 app.post('/orders', authenticateToken, async (req, res) => {
   try {
+    console.log('Creating order for user:', req.user?.id);
     const { items } = req.body;
-    const userId = req.user.id;
+    const userId = req.user!.id;
+    console.log('Order items:', items);
 
     if (!items || !Array.isArray(items) || items.length === 0) {
+      console.log('Invalid order items provided');
       return res.status(400).json({ error: 'Order items are required' });
     }
 
@@ -321,14 +333,17 @@ app.post('/orders', authenticateToken, async (req, res) => {
     }
 
     // Create order
+    console.log('Creating order with total amount:', totalAmount);
     const orderResult = await pool.query(
       'INSERT INTO orders (user_id, total_amount, status) VALUES ($1, $2, $3) RETURNING *',
       [userId, totalAmount, 'pending']
     );
 
     const order = orderResult.rows[0];
+    console.log('Order created:', order);
 
     // Add order items
+    console.log('Adding order items...');
     for (const item of items) {
       const menuItem = await pool.query('SELECT price FROM menu_items WHERE id = $1', [item.menu_item_id]);
       const price = menuItem.rows[0].price;
@@ -337,6 +352,7 @@ app.post('/orders', authenticateToken, async (req, res) => {
         'INSERT INTO order_items (order_id, menu_item_id, quantity, price) VALUES ($1, $2, $3, $4)',
         [order.id, item.menu_item_id, item.quantity, price]
       );
+      console.log(`Added order item: ${item.quantity}x menu_item_id ${item.menu_item_id}`);
     }
 
     // Log the order
@@ -412,12 +428,15 @@ app.get('/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// Get pending orders for kitchen (admin only)
+// Get pending orders for kitchen (kitchen or admin only)
 app.get('/kitchen/orders', authenticateToken, async (req, res) => {
   try {
-    if (!req.user || req.user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    console.log('Kitchen orders request from user:', req.user);
+    if (!req.user || (req.user.role !== 'kitchen' && req.user.role !== 'admin')) {
+      console.log('Access denied - insufficient permissions:', req.user?.role);
+      return res.status(403).json({ error: 'Kitchen or admin access required' });
     }
+    console.log('Fetching kitchen orders from database...');
     const result = await pool.query(`
       SELECT o.*, json_agg(
         json_build_object(
@@ -434,11 +453,11 @@ app.get('/kitchen/orders', authenticateToken, async (req, res) => {
       FROM orders o
       LEFT JOIN order_items oi ON o.id = oi.order_id
       LEFT JOIN menu_items mi ON oi.menu_item_id = mi.id
-      WHERE o.status = 'pending' OR o.status = 'preparing'
+      WHERE o.status IN ('pending', 'preparing', 'ready')
       GROUP BY o.id
       ORDER BY o.created_at ASC
     `);
-
+    console.log('Kitchen orders found:', result.rows.length);
     res.json(result.rows);
   } catch (err) {
     console.error('Error fetching kitchen orders:', err);
@@ -446,11 +465,11 @@ app.get('/kitchen/orders', authenticateToken, async (req, res) => {
   }
 });
 
-// Update order status (admin only)
+// Update order status (kitchen or admin only)
 app.put('/orders/:id/status', authenticateToken, async (req, res) => {
   try {
-    if (!req.user! || req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required' });
+    if (!req.user! || (req.user!.role !== 'kitchen' && req.user!.role !== 'admin')) {
+      return res.status(403).json({ error: 'Kitchen or admin access required' });
     }
     const { id } = req.params;
     const { status } = req.body;

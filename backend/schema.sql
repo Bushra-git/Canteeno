@@ -36,7 +36,7 @@ CREATE TABLE orders (
 -- Order items table
 CREATE TABLE order_items (
     id SERIAL PRIMARY KEY,
-    order_id INTEGER REFERENCES orders(id),
+    order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
     menu_item_id INTEGER REFERENCES menu_items(id),
     quantity INTEGER NOT NULL,
     price DECIMAL(10, 2) NOT NULL
@@ -53,6 +53,28 @@ CREATE TABLE user_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Function to update the updated_at column
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Trigger to automatically update updated_at
+CREATE TRIGGER update_orders_updated_at 
+    BEFORE UPDATE ON orders 
+    FOR EACH ROW 
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Indexes for better performance
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_menu_items_category ON menu_items(category);
+CREATE INDEX idx_menu_items_available ON menu_items(available);
+
 -- Insert sample data
 INSERT INTO users (roll_number, username, email, password_hash, role) VALUES
 ('23101A0001', 'admin', 'admin@canteen.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'admin'),
@@ -60,7 +82,13 @@ INSERT INTO users (roll_number, username, email, password_hash, role) VALUES
 ('23101A0003', 'user1', 'user1@student.com', '$2b$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'user');
 
 INSERT INTO menu_items (name, description, price, category) VALUES
-('Veg Sandwich', 'Fresh vegetable sandwich with cheese', 50.00, 'Sandwiches'),
-('Chicken Burger', 'Grilled chicken burger with fries', 120.00, 'Burgers'),
-('Coffee', 'Hot brewed coffee', 30.00, 'Beverages'),
-('Pizza', 'Cheese pizza with toppings', 150.00, 'Pizza');
+('Veg Sandwich', 'Fresh vegetable sandwich with cheese', 50.00, 'Snacks'),
+('Chicken Burger', 'Grilled chicken burger with fries', 120.00, 'Meals'),
+('Masala Chai', 'Hot spiced tea with milk', 15.00, 'Beverages'),
+('Coffee', 'Hot brewed coffee', 25.00, 'Beverages'),
+('Samosa', 'Crispy pastry with spiced potato filling', 12.00, 'Snacks'),
+('Veg Thali', 'Complete vegetarian meal with rice, dal, sabzi, roti', 85.00, 'Meals'),
+('Pav Bhaji', 'Spiced mashed vegetables with bread rolls', 60.00, 'Meals'),
+('Cold Drink', 'Chilled soft drink', 20.00, 'Beverages'),
+('Ice Cream', 'Vanilla ice cream', 30.00, 'Desserts'),
+('Gulab Jamun', 'Sweet milk dumplings in syrup', 25.00, 'Desserts');
